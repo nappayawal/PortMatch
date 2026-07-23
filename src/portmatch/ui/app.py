@@ -6,10 +6,16 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 from typing import Any, Dict, List, Optional, Tuple
 
-from portmatch.db import delete_year, find_ships_with_me, list_imported_ships, query_calls
+from portmatch.db import (
+    delete_ship_year,
+    delete_year,
+    find_dry_docks,
+    find_ships_with_me,
+    list_imported_ships,
+    query_calls,
+)
 from portmatch.importer import import_schedule
 from portmatch.paths import ships_json_path, app_root
-from portmatch.db import delete_year, delete_ship_year, find_ships_with_me, list_imported_ships, query_calls
 
 
 def _clean(v: Any) -> str:
@@ -178,16 +184,22 @@ class PortMatchApp(ttk.Frame):
         self.q_port = ttk.Entry(self.tab_query, width=10)
         self.q_port.grid(row=1, column=3, sticky="w", **pad)
 
-        ttk.Button(self.tab_query, text="Show schedule", command=self._do_query_schedule).grid(row=2, column=1, sticky="w", **pad)
-        ttk.Button(self.tab_query, text="Find ships with me", command=self._do_query_with_me).grid(row=2, column=2, sticky="w", **pad)
+        ttk.Label(self.tab_query, text="Dry Dock Year").grid(row=2, column=0, sticky="w", **pad)
+        self.q_dry_dock_year = ttk.Entry(self.tab_query, width=10)
+        self.q_dry_dock_year.grid(row=2, column=1, sticky="w", **pad)
+        self.q_dry_dock_year.insert(0, "2026")
+
+        ttk.Button(self.tab_query, text="Show schedule", command=self._do_query_schedule).grid(row=3, column=0, sticky="w", **pad)
+        ttk.Button(self.tab_query, text="Find ships with me", command=self._do_query_with_me).grid(row=3, column=1, sticky="w", **pad)
+        ttk.Button(self.tab_query, text="Find dry docks", command=self._do_query_dry_docks).grid(row=3, column=2, sticky="w", **pad)
 
         self.q_rows_label = ttk.Label(self.tab_query, text="Rows: 0")
-        self.q_rows_label.grid(row=3, column=0, sticky="w", padx=10, pady=4)
+        self.q_rows_label.grid(row=4, column=0, sticky="w", padx=10, pady=4)
 
         self.q_out = tk.Text(self.tab_query, height=18, width=105, font=("Consolas", 10))
-        self.q_out.grid(row=4, column=0, columnspan=4, sticky="nsew", padx=10, pady=10)
+        self.q_out.grid(row=5, column=0, columnspan=4, sticky="nsew", padx=10, pady=10)
 
-        self.tab_query.grid_rowconfigure(4, weight=1)
+        self.tab_query.grid_rowconfigure(5, weight=1)
         self.tab_query.grid_columnconfigure(1, weight=1)
 
         self._refresh_query_ships()
@@ -213,6 +225,15 @@ class PortMatchApp(ttk.Frame):
 
         rows = query_calls(d1, d2, ship_key=ship_key, port_code=port)
         self._render_schedule(rows)
+
+    def _do_query_dry_docks(self):
+        year_text = self.q_dry_dock_year.get().strip()
+        if not year_text.isdigit():
+            messagebox.showerror("Invalid", "Dry Dock Year must be numeric (e.g., 2026).")
+            return
+
+        rows = find_dry_docks(int(year_text))
+        self._render_dry_docks(rows, int(year_text))
 
     def _do_query_with_me(self):
         d1 = self.q_from.get().strip()
@@ -260,6 +281,35 @@ class PortMatchApp(ttk.Frame):
             self.q_out.insert("end", line)
 
 
+
+    def _render_dry_docks(self, rows: List[Dict[str, Any]], year: int):
+        self.q_out.delete("1.0", "end")
+        self.q_rows_label.config(text=f"Dry-dock rows: {len(rows)}")
+
+        W_DATE, W_SHIP, W_LOC, W_PORT, W_TIME = 10, 22, 42, 5, 11
+        self.q_out.insert("end", f"SHIPS WITH DRY DOCK IN {year}\n\n")
+        header = (
+            f"{'DATE':<{W_DATE}} | {'SHIP':<{W_SHIP}} | {'LOCATION':<{W_LOC}} | "
+            f"{'PORT':<{W_PORT}} | {'TIME':<{W_TIME}}\n"
+        )
+        sep = (
+            f"{'-' * W_DATE}-+-{'-' * W_SHIP}-+-{'-' * W_LOC}-+-"
+            f"{'-' * W_PORT}-+-{'-' * W_TIME}\n"
+        )
+        self.q_out.insert("end", header)
+        self.q_out.insert("end", sep)
+
+        for r in rows:
+            dt = _clip(r.get("sail_date"), W_DATE)
+            ship = _clip(r.get("ship_name"), W_SHIP)
+            loc = _clip(r.get("location"), W_LOC)
+            port = _clip(r.get("port_code"), W_PORT)
+            time_text = _clip(_fmt_time(r.get("eta"), r.get("etd")), W_TIME)
+            self.q_out.insert(
+                "end",
+                f"{dt:<{W_DATE}} | {ship:<{W_SHIP}} | {loc:<{W_LOC}} | "
+                f"{port:<{W_PORT}} | {time_text:<{W_TIME}}\n",
+            )
 
     def _refresh_maint_ships(self):
         imported = list_imported_ships()

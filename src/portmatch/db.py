@@ -124,6 +124,36 @@ def query_calls(
         return [dict(r) for r in rows]
 
 
+
+def find_dry_docks(year: int) -> List[Dict[str, Any]]:
+    """Return all schedule rows whose Location contains a dry-dock reference.
+
+    Matching is case-insensitive and ignores spaces, hyphens, and underscores,
+    so values such as DRYDOCK, Dry Dock, Dry-Dock, and
+    "Freeport - DRYDOCK" are all included.
+    """
+    init_db()
+    year_text = str(int(year))
+
+    sql = """
+        SELECT DISTINCT
+            sail_date, ship_key, ship_name, location, port_code, eta, etd
+        FROM port_calls
+        WHERE substr(sail_date, 1, 4) = ?
+          AND REPLACE(
+                REPLACE(
+                    REPLACE(LOWER(IFNULL(location, '')), ' ', ''),
+                    '-', ''
+                ),
+                '_', ''
+              ) LIKE '%drydock%'
+        ORDER BY sail_date, ship_name, location
+    """
+
+    with connect() as conn:
+        rows = conn.execute(sql, (year_text,)).fetchall()
+        return [dict(r) for r in rows]
+
 def find_ships_with_me(
     my_ship_key: str,
     date_from: str,
