@@ -154,60 +154,6 @@ def find_dry_docks(year: int) -> List[Dict[str, Any]]:
         rows = conn.execute(sql, (year_text,)).fetchall()
         return [dict(r) for r in rows]
 
-
-def find_ships_by_port(
-    port_search: str,
-    date_from: str,
-    date_to: str,
-) -> List[Dict[str, Any]]:
-    """Return ships visiting a requested port within a date range.
-
-    Port names support a case-insensitive partial match, so ``barcelon``
-    matches ``Barcelona``. Spaces and common punctuation are ignored when
-    comparing names. Port codes remain exact, case-insensitive matches.
-    """
-    init_db()
-    search_text = port_search.strip()
-    if not search_text:
-        return []
-
-    # Normalize the name search in Python. This makes entries such as
-    # "La-Spezia", "La Spezia", and "la_spezia" comparable.
-    normalized_search = "".join(ch.lower() for ch in search_text if ch.isalnum())
-    if len(normalized_search) < 3:
-        raise ValueError("Enter at least 3 letters of the port name, or an exact port code.")
-
-    sql = """
-        SELECT DISTINCT
-            sail_date, ship_key, ship_name, location, port_code, eta, etd
-        FROM port_calls
-        WHERE sail_date BETWEEN ? AND ?
-          AND (
-                UPPER(TRIM(IFNULL(port_code, ''))) = UPPER(?)
-                OR REPLACE(
-                     REPLACE(
-                       REPLACE(
-                         REPLACE(
-                           REPLACE(LOWER(IFNULL(location, '')), ' ', ''),
-                           '-', ''
-                         ),
-                         '_', ''
-                       ),
-                       '.', ''
-                     ),
-                     ',', ''
-                   ) LIKE ?
-              )
-        ORDER BY sail_date, ship_name, location
-    """
-
-    with connect() as conn:
-        rows = conn.execute(
-            sql,
-            (date_from, date_to, search_text, f"%{normalized_search}%"),
-        ).fetchall()
-        return [dict(r) for r in rows]
-
 def find_ships_with_me(
     my_ship_key: str,
     date_from: str,
